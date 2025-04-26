@@ -1,0 +1,172 @@
+1. Overview
+This notebook walks through the end-to-end analysis of the DataEngineeringQ2.json dataset. You performed the following major tasks:
+
+Verified your working directory and confirmed the presence of the JSON file.
+Loaded and parsed the JSON into Python objects.
+Explored the raw structure and counted total records.
+Flattened (normalized) the JSON into a Pandas DataFrame.
+Converted birthDate strings into datetime objects and computed patient ages as of April 24, 2025.
+Counted the number of medicines prescribed to each patient.
+Calculated the Pearson correlation between age and medicine count and visualized it.
+Created colored-bar histograms of age and medicine-count distributions.
+Designed a custom function to validate Indian phone numbers and added a boolean column.
+Each code snippet is accompanied by line-by-line explanations.
+
+2. Environment Setup
+Ensure you have Python 3.x, JupyterLab/Notebook, and the following libraries installed:
+
+pandas
+matplotlib
+Initiate a notebook in the same directory as DataEngineeringQ2.json.
+
+3. Step-by-Step Procedure
+3.1 Confirm Working Directory & File Presence
+import os
+
+# 1. Show current working directory
+print("Current working directory:", os.getcwd())
+
+# 2. List files in that directory
+print("Files here:", os.listdir())
+Explanation:
+
+os.getcwd() returns the folder path where your notebook is running.
+os.listdir() lists all files in that folder, so you can verify DataEngineeringQ2.json is present.
+3.2 Load JSON Data
+import json
+
+with open('DataEngineeringQ2.json') as f:
+    data = json.load(f)
+
+# Peek at the first record
+data[:1]
+Explanation:
+
+import json loads Python’s JSON library.
+with open(...) as f: safely opens the file for reading and ensures it’s closed afterward.
+json.load(f) parses the file’s JSON content into Python data structures (a list of dicts).
+data[:1] slices the list to show the first record (index 0) in a one-element list.
+3.3 Inspect Raw Structure
+print("Total records:", len(data))
+print("Keys in one record:", data[0].keys())
+Explanation:
+
+len(data) gives the number of consultation entries.
+data[0].keys() lists top-level fields in each record ('_id', 'appointmentId', 'patientDetails', etc.).
+3.4 Normalize JSON to DataFrame
+import pandas as pd
+
+# Flatten nested JSON into a table
+df = pd.json_normalize(data, sep='.')
+
+print("DataFrame shape:", df.shape)
+print("Columns available:", df.columns.tolist())
+df.head(3)
+Explanation:
+
+pd.json_normalize(..., sep='.') turns each record into one row; nested dicts become dotted-column names.
+df.shape returns (31, 43), meaning 31 rows and 43 columns.
+df.columns.tolist() shows all column names, like patientDetails.birthDate and consultationData.medicines.
+3.5 Parse Birth Dates & Compute Age
+# 1. Convert birthDate strings to datetime (UTC-aware)
+df['birthDate'] = pd.to_datetime(
+    df['patientDetails.birthDate'], utc=True, errors='coerce'
+)
+
+# 2. Define reference date
+ref_date = pd.Timestamp('2025-04-24', tz='UTC')
+
+# 3. Compute age in years: (ref - birth).days / 365.25
+df['age'] = (ref_date - df['birthDate']).dt.days / 365.25
+
+# 4. Inspect
+print("Parsed birthDates:", df['birthDate'].notna().sum(), "of", len(df))
+print("Average age:", df['age'].mean())
+df[['patientDetails.firstName','birthDate','age']].head()
+Explanation:
+
+pd.to_datetime(..., errors='coerce') converts strings to datetime; unparseable ones become NaT.
+pd.Timestamp(...) creates a single timestamp for subtraction.
+Subtraction yields a timedelta; .dt.days extracts days.
+Division by 365.25 converts days to years.
+3.6 Count Medicines per Patient
+# Each row’s medicines list → count of items
+
+df['med_count'] = df['consultationData.medicines'] \
+    .apply(lambda meds: len(meds))
+
+# Quick check
+df[['patientDetails.firstName','med_count']].head()
+Explanation:
+
+.apply(lambda meds: len(meds)) runs on each list of medicine dicts, returning how many were prescribed.
+3.7 Pearson Correlation & Scatter Plot
+# 1. Pearson correlation coefficient
+correlation = df['age'].corr(df['med_count'])
+print(f"Pearson correlation: {correlation:.2f}")
+
+# 2. Scatter plot
+import matplotlib.pyplot as plt
+
+plt.scatter(df['age'], df['med_count'])
+plt.xlabel('Age (years)')
+plt.ylabel('Number of Medicines')
+plt.title('Age vs. Number of Medicines')
+plt.show()
+Explanation:
+
+.corr(...) computes Pearson r between two series.
+plt.scatter(...) visualizes the relationship—points slope slightly downward for r ≈ –0.22.
+3.8 Histograms with Colored Bars
+# Data for histogram
+ages = df['age'].dropna()
+
+# Plot and color bars
+a = plt.hist(ages, bins=10)
+counts, bins, patches = a
+import numpy as np
+
+colors = plt.cm.viridis(np.linspace(0,1,len(patches)))
+for patch, color in zip(patches, colors):
+    patch.set_facecolor(color)
+
+plt.xlabel('Age (years)')
+plt.ylabel('Count')
+plt.title('Age Distribution with Colored Bars')
+plt.show()
+Explanation:
+
+plt.hist(...) returns patches, the Rectangle objects for each bar.
+plt.cm.viridis(...) generates a color gradient; set_facecolor applies each to a bar.
+3.9 Validate Phone Numbers
+def is_valid_mobile(phone):
+    s = str(phone).strip()
+    if s.startswith('+91'):
+        s = s[3:]
+    elif s.startswith('91'):
+        s = s[2:]
+    if not (s.isdigit() and len(s)==10):
+        return False
+    n = int(s)
+    return 6000000000 <= n <= 9999999999
+
+# Apply to DataFrame
+df['isValidMobile'] = df['phoneNumber'].apply(is_valid_mobile)
+
+# Check results
+print("Valid numbers:", df['isValidMobile'].sum(), "of", len(df))
+df[['phoneNumber','isValidMobile']].head(10)
+Explanation:
+
+Strip whitespace and potential +91/91 prefixes.
+Ensure exactly 10 digits.
+Enforce numeric range.
+.apply(...) populates a boolean column.
+4. Summary
+You’ve now:
+
+Loaded and explored a JSON dataset.
+Flattened it into tabular form.
+Engineered features (age, med_count, isValidMobile).
+Performed filtering, aggregation, and correlation analysis.
+Visualized key distributions and relationships.
